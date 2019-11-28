@@ -179,7 +179,11 @@
                 return [self dataTaskWithHTTPMethod:@"GET" requestSerializer:requestSerializer URLString:url parameters:param error:error];
             }
         case YTKRequestMethodPOST:
-            return [self dataTaskWithHTTPMethod:@"POST" requestSerializer:requestSerializer URLString:url parameters:param constructingBodyWithBlock:constructingBlock error:error];
+            if (request.uploadDataTaskProgressBlock) {
+                return [self uploadTaskWithRequestSerializer:requestSerializer URLString:url parameters:param constructingBodyWithBlock:constructingBlock progress:request.uploadDataTaskProgressBlock error:error];
+            } else {
+                return [self dataTaskWithHTTPMethod:@"POST" requestSerializer:requestSerializer URLString:url parameters:param constructingBodyWithBlock:constructingBlock error:error];
+            }
         case YTKRequestMethodHEAD:
             return [self dataTaskWithHTTPMethod:@"HEAD" requestSerializer:requestSerializer URLString:url parameters:param error:error];
         case YTKRequestMethodPUT:
@@ -461,8 +465,34 @@
                            completionHandler:^(NSURLResponse * __unused response, id responseObject, NSError *_error) {
                                [self handleRequestResult:dataTask responseObject:responseObject error:_error];
                            }];
-
+    
     return dataTask;
+}
+
+-(NSURLSessionDataTask *)uploadTaskWithRequestSerializer:(AFHTTPRequestSerializer *)requestSerializer
+                                               URLString:(NSString *)URLString
+                                              parameters:(id)parameters
+                               constructingBodyWithBlock:(nullable void (^)(id formData))block
+                                                progress:(nullable void (^)(NSProgress *uploadProgress))uploadProgressBlock
+                                                   error:(NSError * _Nullable __autoreleasing *)error {
+    NSMutableURLRequest *urlRequest = nil;
+    if (block) {
+        urlRequest = [requestSerializer multipartFormRequestWithMethod:@"POST" URLString:URLString parameters:parameters constructingBodyWithBlock:block error:error];
+    } else {
+        urlRequest = [requestSerializer requestWithMethod:@"POST" URLString:URLString parameters:parameters error:error];
+    }
+    
+    __block NSURLSessionDataTask *uploadDataTask = nil;
+    uploadDataTask = [_manager dataTaskWithRequest:urlRequest uploadProgress:^(NSProgress * _Nonnull uploadProgress) {
+        
+        uploadProgressBlock(uploadProgress);
+    } downloadProgress:^(NSProgress * _Nonnull downloadProgress) {
+        
+    } completionHandler:^(NSURLResponse * _Nonnull response, id _Nullable responseObject, NSError * _Nullable _error) {
+        [self handleRequestResult:uploadDataTask responseObject:responseObject error:_error];
+    }];
+    
+    return uploadDataTask;
 }
 
 - (NSURLSessionDownloadTask *)downloadTaskWithDownloadPath:(NSString *)downloadPath
